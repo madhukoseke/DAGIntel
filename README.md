@@ -34,6 +34,45 @@ The same codebase supports:
 
 On **Hugging Face Spaces**, `get_llm()` detects the Space runtime and **only** instantiates the **Hugging Face Inference** backend (`huggingface/<model_id>` via LiteLLM). Other backends are available **outside** that environment (see Configuration).
 
+### Architecture (ASCII)
+
+Execution path from user input through the crew to UI output (monospace; read left-to-right, top-to-bottom):
+
+```text
+  +---------------------------+
+  | Gradio or Streamlit       |
+  | scenario | paste | file  |
+  +-------------+-------------+
+                |
+                v        raw_logs + optional dag_context
+  +-----------------------------+
+  | dagintel.crew.investigate() |
+  | Crew(process=sequential)    |
+  +-----------------------------+
+                |
+    +-----------+-----------+-----------+
+    v           v           v           v
+ +------+   +------+   +------+   +------------------+
+ |Agent |   |Task 1|   |Task 2|   | Task 3           |
+ | x 3  |   |parse |-->|diag  |-->| fix              |
+ +---+--+   +---+--+   +---+--+   +---+--------------+
+     |          |          |          |
+     +----------+----------+----------+
+                |
+                v
+     +-------------------------+
+     | LiteLLM -> configured   |
+     | model (e.g. Qwen on HF  |
+     | Inference, or vLLM API) |
+     +-------------------------+
+                |
+                v
+     +-------------------------+
+     | UI: three result strings|
+     | (parse, diagnose, fix)  |
+     +-------------------------+
+```
+
 ---
 
 ## Repository layout
