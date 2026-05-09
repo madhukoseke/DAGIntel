@@ -1,117 +1,160 @@
 # DAGIntel
 
-## Why this exists
+Documentation for the **DAGIntel** source repository: a small Python application that assists with **Apache Airflow**–style log triage using multiple LLM-backed agents.
 
-Data teams still spend a long time on the same Airflow failures: reading raw scheduler and worker logs, guessing which layer failed, searching Slack and old tickets, and only then writing a fix or runbook. That work is repetitive, but it depends on judgment that usually lives in senior engineers’ heads. **DAGIntel** is a small, end-to-end demo that automates the *first* triage pass so you get structured parsing, a reasoned hypothesis, and suggested remediation faster than starting from a blank editor.
+---
 
-It was built for the **AMD Developer Hackathon 2026** to show **agentic workflows** on realistic infrastructure storylines (OOM, schema drift, connection storms, sensors), using **open-weight Qwen** models and **CrewAI** orchestration—not a chat wrapper around a single prompt.
+## Overview
 
-## Hackathon technology and access
+**DAGIntel** accepts **raw task or scheduler log text** (plus optional structured context), runs a **fixed sequence of three agents**, and returns three text artifacts: a structured-style parse, a root-cause style analysis, and suggested remediation notes. It is intended as a **prototype** for first-pass triage, not as a certified incident management system.
 
-The hackathon positions **AMD’s cloud AI stack** (on-demand **AMD Instinct** GPUs, **ROCm**, credits on **AMD Developer Cloud**) together with **Hugging Face** as the **model hub and deployment surface**, and asks teams to **incorporate Qwen** in a real, end-to-end app. **DAGIntel** is written to match that story: agents and orchestration on the application side, **Qwen weights resolved from the Hugging Face Hub**, a **Gradio Space** under the event organization for judges and the community, and an optional **self-hosted inference** path when you run **vLLM** (or any OpenAI-compatible server) on **ROCm-capable AMD GPU** instances—exactly the kind of workload people prototype on **AMD Developer Cloud** before hardening on-prem.
+The same codebase supports:
 
-**AMD Developer Cloud** is the supported way to get cloud **AMD Instinct** capacity without owning hardware: launch a GPU-backed environment, install or pull a ROCm-ready image, and benchmark or serve models there. For this repo, that maps to hosting **Qwen** with **vLLM** (see **`scripts/serve_qwen3.sh`**) and pointing **`DAGINTEL_BACKEND=vllm`** plus **`VLLM_BASE_URL`** / **`VLLM_MODEL`** in **`.env.example`**. Official access, credits, and pay-as-you-go terms are described on AMD’s pages, not duplicated here.
+- **Local or private** execution with configurable LLM routing.
+- **Hugging Face Spaces** deployment via **Gradio**, with inference constrained to **Hugging Face Inference API** credentials supplied as Space secrets.
 
-Useful links: [AMD Developer Cloud overview](https://www.amd.com/en/developer/resources/cloud-access/amd-developer-cloud.html) · [How to get started on AMD Developer Cloud](https://www.amd.com/en/developer/resources/technical-articles/2025/how-to-get-started-on-the-amd-developer-cloud-.html) · [AMD AI Academy (training)](https://www.amd.com/en/developer/resources/training/amd-ai-academy.html)
+---
 
-**ROCm** is AMD’s open GPU compute stack—the layer that lets **PyTorch**, **vLLM**, and similar frameworks use **Instinct** hardware in those environments the same way CUDA backs NVIDIA in theirs.
+## Features
 
-Useful links: [ROCm documentation](https://rocm.docs.amd.com/) · [ROCm installation guide](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/) · [ROCm on GitHub](https://github.com/ROCm/ROCm)
+- **Three sequential agents** (CrewAI): log analysis, root-cause reasoning, fix / runbook suggestions.
+- **Input modes**: built-in JSON **scenarios**, **pasted** log text, or **uploaded** plain-text files (Gradio UI).
+- **Optional DAG context** for custom runs: JSON object or free-text notes, parsed in application code.
+- **Dual UI**: **Gradio** (`app.py`) and **Streamlit** (`app/streamlit_app.py`).
+- **Script** to run **Qwen** behind an OpenAI-compatible **vLLM** server (`scripts/serve_qwen3.sh`) when you host the model yourself (for example on AMD GPU hosts with ROCm).
 
-**Hugging Face** is the hackathon’s **Hub + Spaces** workflow: pick a model on the Hub, build or fine-tune with your **AMD Developer Cloud** allocation when your design needs it, then **publish a Space** inside the event org and **submit that Space URL on lablab**. **DAGIntel** follows steps one, three, and four out of the box: it depends on a **Hub** model id (default **Qwen**), ships as a **Space** ([lablab-ai-amd-developer-hackathon / DAGIntel-airflow-investigator](https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/DAGIntel-airflow-investigator)), and you submit the same link per event instructions. Joining the org is required to publish there: [lablab-ai-amd-developer-hackathon on Hugging Face](https://huggingface.co/lablab-ai-amd-developer-hackathon).
+---
 
-Useful links: [Hugging Face Hub documentation](https://huggingface.co/docs/hub) · [Spaces documentation](https://huggingface.co/docs/hub/spaces)
+## How it works
 
-**Qwen** is the incorporated open model family: all three agents call the same LiteLLM-backed configuration, defaulting to **`huggingface/Qwen/QwQ-32B-Preview`** on the public Space (serverless inference with your **`HF_TOKEN`**) or to whatever **`HF_MODEL`** you set. That satisfies the hackathon brief to use Qwen for **reasoning and workflow automation**, not only as a label in the readme.
+1. The UI collects **log text** and optional **context**.
+2. `dagintel.crew.investigate()` builds three **CrewAI** `Agent` instances sharing one **LLM** instance from `dagintel.llm.get_llm()`.
+3. Three **CrewAI** `Task` objects are chained: parse → diagnose → fix; each later task receives prior task outputs as **context**.
+4. `Crew.kickoff()` runs tasks **sequentially**. Results are surfaced as strings in the UI.
 
-Useful links: [Qwen on Hugging Face](https://huggingface.co/Qwen) · [Qwen documentation](https://qwen.readthedocs.io/en/latest/)
+On **Hugging Face Spaces**, `get_llm()` detects the Space runtime and **only** instantiates the **Hugging Face Inference** backend (`huggingface/<model_id>` via LiteLLM). Other backends are available **outside** that environment (see Configuration).
 
-**Track fit** this submission targets **Track 1 — AI agents and agentic workflows** (CrewAI multi-agent pipeline). It is not a fine-tuning or vision track entry.
+---
 
-## What it does
+## Repository layout
 
-**DAGIntel** runs three **CrewAI** agents in order on the log text you provide:
+- **`src/dagintel/`** — Python package: `crew`, `agents`, `tasks`, `llm`, `scenarios`, `telemetry`, and `prompts/`.
+- **`scenarios/`** — JSON fixtures for the sample scenario picker.
+- **`app.py`** — Gradio entrypoint (used by Hugging Face Spaces).
+- **`app/streamlit_app.py`** — Streamlit entrypoint.
+- **`hf-space/`** — Supplementary files for Hugging Face packaging; the canonical application code lives at the paths above.
+- **`scripts/serve_qwen3.sh`** — Example command line to start a **vLLM** OpenAI-compatible server.
+- **`scripts/sync_hf_space.sh`** — Copies selected artifacts into a local clone of the Space repository (see Hugging Face Space).
+- **`.env.example`** — Documented environment variables for local configuration.
 
-1. **Log analyzer** — Treats messy Airflow-style output as input and aims to extract structured signals (task identifiers, error class, key lines) so the next step is not re-reading the same stack trace from scratch.
+---
 
-2. **Root cause detective** — Separates what failed first from what might be underlying (for example, exit 137 versus memory limits versus the code path that triggered them).
+## System requirements
 
-3. **Fix suggester** — Produces actionable notes: mitigations, checks to run, and runbook-style guidance your team can refine—not a replacement for production change management, but a strong draft after one button click.
+- **Python** 3.11 or newer (3.11 is the version used in the Hugging Face Space metadata).
+- Network access to whichever **LLM endpoint** you configure.
+- For the **Space**: a **Hugging Face** account with permission to push to the target Space, and a **read token** with **Inference API** scope stored as secret **`HF_TOKEN`**.
 
-You can drive it from **sample scenarios** checked into this repo, by **pasting** a log you already have, or by **uploading** a plain-text log file. Optional **DAG context** (JSON or short free text) can be attached for custom runs so the agents are not working only from a naked stack trace.
+---
 
-## Flow (ASCII)
+## Dependencies
 
-High-level path from input to outputs (all three tasks share one LLM configuration behind CrewAI):
+Pinned or lower-bounded versions are listed in **`requirements.txt`**. Principal libraries:
 
-```text
-                         +---------------------------+
-                         | Gradio or Streamlit       |
-                         | scenario / paste / file |
-                         +-------------+-------------+
-                                       |
-                                       v
-                            raw_logs + dag_context
-                                       |
-                                       v
-              +------------------------------------------------+
-              |              CrewAI sequential crew             |
-              +------------------------------------------------+
-                    |                    |                    |
-                    v                    v                    v
-             +-------------+      +-------------+      +-------------+
-             | (1) Parse   |----->| (2) Diagnose|----->| (3) Fix     |
-             |     logs    |      |     cause   |      |  suggest    |
-             +------+------+      +------+------+      +------+------+
-                    |                    |                    |
-                    +--------------------+--------------------+
-                                         |
-                                         v
-                              +----------+----------+
-                              | LiteLLM + model     |
-                              | (e.g. Qwen on HF)   |
-                              +----------+----------+
-                                         |
-                                         v
-                              +----------+----------+
-                              | Analyzer JSON       |
-                              | + two markdown      |
-                              |   sections          |
-                              +---------------------+
-```
+- **crewai** 0.95.0 — multi-agent orchestration.
+- **crewai-tools** 0.25.8 — transitive tooling for CrewAI.
+- **langchain-openai** 0.2.14 — OpenAI-compatible client surface used by the stack.
+- **litellm** ≥ 1.55.0 — provider routing for completions (Hugging Face, OpenAI-compatible servers, etc.).
+- **streamlit** 1.40.2 — optional local UI.
+- **gradio** ≥ 4.44.1, &lt; 6 — Space UI.
+- **pydantic** 2.10.4 — configuration models (CrewAI / tooling).
+- **python-dotenv** 1.0.1 — load `.env` in development.
+- **huggingface-hub** 0.27.0 — Hub client utilities.
+- **fastapi** 0.115.6 / **uvicorn** 0.34.0 — pulled as dependencies; not required for the core demo path.
+- **rich** 13.9.4, **requests** 2.32.3 — supporting libraries.
 
-## What it is not
+---
 
-It does not replace your orchestrator, your on-call rotation, or your data platform’s official runbooks. It does not prove root cause against live metrics unless you wire that in yourself. The bundled scenarios are **illustrative**; production systems should use your own logs, guardrails, and review.
+## Configuration
 
-## Tech stack (implementation)
+Copy **`.env.example`** to **`.env`** for local work. Important variables:
 
-**CrewAI** coordinates the agents. **LiteLLM** routes completions. On the **Hugging Face Space**, inference is **always** **Qwen** (or your chosen Hub id) via the **Hugging Face Inference API** and repository secret **`HF_TOKEN`**—see **Hackathon technology and access** above. Locally you may instead point **`DAGINTEL_BACKEND=vllm`** at **vLLM** on **ROCm / AMD Instinct** (AMD Developer Cloud or your own host) using **`.env.example`**.
+- **`DAGINTEL_BACKEND`** — `hf_inference` (default), `vllm`, or `anthropic` (local only; ignored on Hugging Face Spaces).
+- **`HF_TOKEN`** / **`HUGGING_FACE_HUB_TOKEN`** — required for `hf_inference`.
+- **`HF_MODEL`** — Hugging Face Hub repository id for the text model (default in code: `Qwen/QwQ-32B-Preview`).
+- **`VLLM_BASE_URL`**, **`VLLM_MODEL`** — when `DAGINTEL_BACKEND=vllm`.
+- **`ANTHROPIC_API_KEY`**, **`ANTHROPIC_MODEL`** — when `DAGINTEL_BACKEND=anthropic` (local only).
 
-**Gradio** (`app.py`) is what the Space runs; **Streamlit** (`app/streamlit_app.py`) is an alternate local UI.
+See **`src/dagintel/llm.py`** for authoritative behavior, including Space detection and backend forcing.
 
-## Repositories
+---
 
-This GitHub repository is the **source of truth** for application code and scenarios.
-
-The hackathon **Hugging Face Space** lives in a separate git remote: [lablab-ai-amd-developer-hackathon / DAGIntel-airflow-investigator](https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/DAGIntel-airflow-investigator). The Space working copy is intentionally **not** committed here. After you change this repo, run **`./scripts/sync_hf_space.sh`** from the project root, then commit and push inside your HF clone so the Space rebuilds.
-
-## Run locally
-
-Install dependencies, configure secrets from **`.env.example`** (never commit real tokens), then start either UI:
+## Installation
 
 ```bash
 cd DAGIntel
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your keys and endpoints.
+```
+
+---
+
+## Running the application
+
+**Gradio (default for Hugging Face Spaces):**
+
+```bash
 python app.py
-# or
+```
+
+By default the server listens on port **7860**, or the process environment variable **`PORT`** if set.
+
+**Streamlit:**
+
+```bash
 streamlit run app/streamlit_app.py
 ```
 
-## Project layout
+---
 
-**`src/dagintel/`** holds the Python package: crew wiring, agent definitions, task builders, LLM factory, and prompt stubs. **`scenarios/`** contains JSON fixtures for demo incidents. **`hf-space/`** mirrors the layout expected by Hugging Face for packaging and review. **`scripts/`** includes **`sync_hf_space.sh`** and a helper to serve Qwen with **vLLM** when you are on GPU hosts.
+## Hugging Face Space
+
+The public demo is maintained in a **separate Git repository** (Hugging Face remote), not as a subdirectory of this GitHub tree:
+
+[lablab-ai-amd-developer-hackathon / DAGIntel-airflow-investigator](https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/DAGIntel-airflow-investigator)
+
+To refresh that clone from this monorepo after local edits:
+
+```bash
+./scripts/sync_hf_space.sh
+cd hf-space/DAGIntel-airflow-investigator
+git add -A && git commit -m "Sync from monorepo" && git push
+```
+
+The sync script expects the Space repository to exist at **`hf-space/DAGIntel-airflow-investigator/`** with its own **`.git`** directory.
+
+---
+
+## Limitations
+
+- Bundled **scenarios** are short **illustrations**; they do not replace production log corpora.
+- **Task prompts** are minimal; production use would extend `tasks.py` and prompt files under `src/dagintel/prompts/`.
+- **No authentication** or rate limiting in the demo UI.
+- **No guarantee** of factual root cause: outputs are model-generated and must be reviewed by humans before operational action.
+
+---
 
 ## License
 
-MIT unless you add a different `LICENSE` file at the root.
+MIT. Add a `LICENSE` file at the repository root if you require explicit license text in-tree.
+
+---
+
+## Source
+
+Primary development repository: [github.com/madhukoseke/DAGIntel](https://github.com/madhukoseke/DAGIntel).
+
+This project was initially developed in the context of the **AMD Developer Hackathon 2026**; runtime and sponsorship details are outside the scope of this document.
