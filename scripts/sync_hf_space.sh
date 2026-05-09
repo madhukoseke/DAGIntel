@@ -13,6 +13,7 @@ fi
 mkdir -p "$DST/src" "$DST/scenarios"
 cp "$ROOT/app.py" "$DST/app.py"
 cp "$ROOT/requirements.txt" "$DST/requirements.txt"
+cp "$ROOT/hf-space/README.md" "$DST/README.md"
 rsync -a --delete "$ROOT/src/dagintel/" "$DST/src/dagintel/"
 rsync -a --delete "$ROOT/scenarios/" "$DST/scenarios/"
 echo "Synced → $DST"

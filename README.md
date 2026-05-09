@@ -6,6 +6,28 @@ Data teams still spend a long time on the same Airflow failures: reading raw sch
 
 It was built for the **AMD Developer Hackathon 2026** to show **agentic workflows** on realistic infrastructure storylines (OOM, schema drift, connection storms, sensors), using **open-weight Qwen** models and **CrewAI** orchestration—not a chat wrapper around a single prompt.
 
+## Hackathon technology and access
+
+The hackathon positions **AMD’s cloud AI stack** (on-demand **AMD Instinct** GPUs, **ROCm**, credits on **AMD Developer Cloud**) together with **Hugging Face** as the **model hub and deployment surface**, and asks teams to **incorporate Qwen** in a real, end-to-end app. **DAGIntel** is written to match that story: agents and orchestration on the application side, **Qwen weights resolved from the Hugging Face Hub**, a **Gradio Space** under the event organization for judges and the community, and an optional **self-hosted inference** path when you run **vLLM** (or any OpenAI-compatible server) on **ROCm-capable AMD GPU** instances—exactly the kind of workload people prototype on **AMD Developer Cloud** before hardening on-prem.
+
+**AMD Developer Cloud** is the supported way to get cloud **AMD Instinct** capacity without owning hardware: launch a GPU-backed environment, install or pull a ROCm-ready image, and benchmark or serve models there. For this repo, that maps to hosting **Qwen** with **vLLM** (see **`scripts/serve_qwen3.sh`**) and pointing **`DAGINTEL_BACKEND=vllm`** plus **`VLLM_BASE_URL`** / **`VLLM_MODEL`** in **`.env.example`**. Official access, credits, and pay-as-you-go terms are described on AMD’s pages, not duplicated here.
+
+Useful links: [AMD Developer Cloud overview](https://www.amd.com/en/developer/resources/cloud-access/amd-developer-cloud.html) · [How to get started on AMD Developer Cloud](https://www.amd.com/en/developer/resources/technical-articles/2025/how-to-get-started-on-the-amd-developer-cloud-.html) · [AMD AI Academy (training)](https://www.amd.com/en/developer/resources/training/amd-ai-academy.html)
+
+**ROCm** is AMD’s open GPU compute stack—the layer that lets **PyTorch**, **vLLM**, and similar frameworks use **Instinct** hardware in those environments the same way CUDA backs NVIDIA in theirs.
+
+Useful links: [ROCm documentation](https://rocm.docs.amd.com/) · [ROCm installation guide](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/) · [ROCm on GitHub](https://github.com/ROCm/ROCm)
+
+**Hugging Face** is the hackathon’s **Hub + Spaces** workflow: pick a model on the Hub, build or fine-tune with your **AMD Developer Cloud** allocation when your design needs it, then **publish a Space** inside the event org and **submit that Space URL on lablab**. **DAGIntel** follows steps one, three, and four out of the box: it depends on a **Hub** model id (default **Qwen**), ships as a **Space** ([lablab-ai-amd-developer-hackathon / DAGIntel-airflow-investigator](https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/DAGIntel-airflow-investigator)), and you submit the same link per event instructions. Joining the org is required to publish there: [lablab-ai-amd-developer-hackathon on Hugging Face](https://huggingface.co/lablab-ai-amd-developer-hackathon).
+
+Useful links: [Hugging Face Hub documentation](https://huggingface.co/docs/hub) · [Spaces documentation](https://huggingface.co/docs/hub/spaces)
+
+**Qwen** is the incorporated open model family: all three agents call the same LiteLLM-backed configuration, defaulting to **`huggingface/Qwen/QwQ-32B-Preview`** on the public Space (serverless inference with your **`HF_TOKEN`**) or to whatever **`HF_MODEL`** you set. That satisfies the hackathon brief to use Qwen for **reasoning and workflow automation**, not only as a label in the readme.
+
+Useful links: [Qwen on Hugging Face](https://huggingface.co/Qwen) · [Qwen documentation](https://qwen.readthedocs.io/en/latest/)
+
+**Track fit** this submission targets **Track 1 — AI agents and agentic workflows** (CrewAI multi-agent pipeline). It is not a fine-tuning or vision track entry.
+
 ## What it does
 
 **DAGIntel** runs three **CrewAI** agents in order on the log text you provide:
@@ -62,11 +84,11 @@ High-level path from input to outputs (all three tasks share one LLM configurati
 
 It does not replace your orchestrator, your on-call rotation, or your data platform’s official runbooks. It does not prove root cause against live metrics unless you wire that in yourself. The bundled scenarios are **illustrative**; production systems should use your own logs, guardrails, and review.
 
-## Tech stack
+## Tech stack (implementation)
 
-**CrewAI** coordinates the agents. **LiteLLM** (via CrewAI’s LLM integration) routes inference. Default path for the public **Hugging Face Space** is **Qwen** through the **Hugging Face Inference API** using a repository secret **`HF_TOKEN`**. For local or private setups you can point the same code at an **OpenAI-compatible** endpoint (for example **vLLM** on AMD hardware) using environment variables described in **`.env.example`**.
+**CrewAI** coordinates the agents. **LiteLLM** routes completions. On the **Hugging Face Space**, inference is **always** **Qwen** (or your chosen Hub id) via the **Hugging Face Inference API** and repository secret **`HF_TOKEN`**—see **Hackathon technology and access** above. Locally you may instead point **`DAGINTEL_BACKEND=vllm`** at **vLLM** on **ROCm / AMD Instinct** (AMD Developer Cloud or your own host) using **`.env.example`**.
 
-The UI ships as **Gradio** (`app.py` at the repo root) for the Space, and **Streamlit** (`app/streamlit_app.py`) for a familiar local dashboard.
+**Gradio** (`app.py`) is what the Space runs; **Streamlit** (`app/streamlit_app.py`) is an alternate local UI.
 
 ## Repositories
 
