@@ -18,6 +18,46 @@ It was built for the **AMD Developer Hackathon 2026** to show **agentic workflow
 
 You can drive it from **sample scenarios** checked into this repo, by **pasting** a log you already have, or by **uploading** a plain-text log file. Optional **DAG context** (JSON or short free text) can be attached for custom runs so the agents are not working only from a naked stack trace.
 
+## Flow (ASCII)
+
+High-level path from input to outputs (all three tasks share one LLM configuration behind CrewAI):
+
+```text
+                         +---------------------------+
+                         | Gradio or Streamlit       |
+                         | scenario / paste / file |
+                         +-------------+-------------+
+                                       |
+                                       v
+                            raw_logs + dag_context
+                                       |
+                                       v
+              +------------------------------------------------+
+              |              CrewAI sequential crew             |
+              +------------------------------------------------+
+                    |                    |                    |
+                    v                    v                    v
+             +-------------+      +-------------+      +-------------+
+             | (1) Parse   |----->| (2) Diagnose|----->| (3) Fix     |
+             |     logs    |      |     cause   |      |  suggest    |
+             +------+------+      +------+------+      +------+------+
+                    |                    |                    |
+                    +--------------------+--------------------+
+                                         |
+                                         v
+                              +----------+----------+
+                              | LiteLLM + model     |
+                              | (e.g. Qwen on HF)   |
+                              +----------+----------+
+                                         |
+                                         v
+                              +----------+----------+
+                              | Analyzer JSON       |
+                              | + two markdown      |
+                              |   sections          |
+                              +---------------------+
+```
+
 ## What it is not
 
 It does not replace your orchestrator, your on-call rotation, or your data platform’s official runbooks. It does not prove root cause against live metrics unless you wire that in yourself. The bundled scenarios are **illustrative**; production systems should use your own logs, guardrails, and review.
