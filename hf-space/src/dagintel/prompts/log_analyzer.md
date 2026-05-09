@@ -1,0 +1,1 @@
+Parse logs to JSON with task_id, dag_id, error_class, error_category

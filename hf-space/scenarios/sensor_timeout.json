@@ -1,0 +1,13 @@
+{
+  "id": "sensor_timeout",
+  "title": "ExternalTaskSensor timeout",
+  "anchoring_context": "Downstream mart blocked on upstream SLA",
+  "raw_logs": "[2026-05-09T06:00:00.001+0000] {taskinstance.py:1189} INFO - Executing <Task(ExternalTaskSensor): wait_for_upstream_fct_orders> on 2026-05-09 05:00:00+00:00\n[2026-05-09T06:00:00.120+0000] {external_task.py:244} INFO - Poking for fct_orders_dag.fct_orders_daily in dag_run scheduled__2026-05-09T04:00:00+00:00 ... \n[2026-05-09T07:30:00.005+0000] {timeout.py:68} ERROR - Process timed out, PID: 44102\n[2026-05-09T07:30:00.088+0000] {taskinstance.py:3313} ERROR - Task failed with exception\nairflow.exceptions.AirflowSensorTimeout: Sensor has timed out; run duration of 5400.02 seconds exceeds the specified timeout of 5400.0.\n\nReschedule logs (excerpt): external task state remained 'running' for upstream fct_orders_daily try 2/3; no terminal state observed within poke interval.\n\n[2026-05-09T07:30:00.200+0000] {taskinstance.py:2732} INFO - Marking task as FAILED. dag_id=mart_daily_dag, task_id=wait_for_upstream_fct_orders\n",
+  "dag_context": {
+    "dag_id": "mart_daily_dag",
+    "task_id": "wait_for_upstream_fct_orders",
+    "external_dag_id": "fct_orders_dag",
+    "external_task_id": "fct_orders_daily",
+    "timeout_seconds": 5400
+  }
+}

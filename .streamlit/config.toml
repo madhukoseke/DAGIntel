@@ -1,0 +1,8 @@
+# Streamlit reads this when you run from the DAGIntel directory.
+# Browser tab text comes from st.set_page_config(page_title=...) in app/streamlit_app.py
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

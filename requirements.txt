@@ -1,0 +1,13 @@
+crewai==0.95.0
+crewai-tools==0.25.8
+langchain-openai==0.2.14
+litellm>=1.55.0
+streamlit==1.40.2
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-dotenv==1.0.1
+huggingface-hub==0.27.0
+rich==13.9.4
+requests==2.32.3
+gradio>=4.44.1,<6

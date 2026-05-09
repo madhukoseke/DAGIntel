@@ -1,0 +1,21 @@
+.env
+.env.local
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.streamlit/secrets.toml
+*.log
+.DS_Store
+.idea/
+.vscode/
+build/
+dist/
+*.egg-info/
+
+# Hugging Face Space working clone (separate git remote); sync with scripts/sync_hf_space.sh
+hf-space/DAGIntel-airflow-investigator/
+
+# Local backup copies — not for GitHub
+hf-space-bkp/

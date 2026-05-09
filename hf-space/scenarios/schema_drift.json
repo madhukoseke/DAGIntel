@@ -1,0 +1,12 @@
+{
+  "id": "schema_drift",
+  "title": "Spark schema mismatch",
+  "anchoring_context": "Silver layer · merge_dim_customer",
+  "raw_logs": "[2026-05-09T11:02:01.441+0000] {taskinstance.py:1189} INFO - Executing <Task(PySparkOperator): merge_dim_customer> on 2026-05-09 10:00:00+00:00\n[2026-05-09T11:02:18.902+0000] {spark_submit_hook.py:412} ERROR - Exception in thread \"main\" org.apache.spark.sql.AnalysisException: [DELTA_FAILED_TO_MERGE_FIELDS] Failed to merge fields 'loyalty_tier' and 'loyalty_tier'\nCaused by: org.apache.spark.sql.delta.schema.SchemaMergingException: Failed to merge incompatible data types StringType and IntegerType\n\n== Physical Plan ==\n*(5) MergeIntoCommand ...\n\n[2026-05-09T11:02:19.010+0000] {taskinstance.py:3313} ERROR - Task failed with exception\npyspark.sql.utils.AnalysisException: Cannot write to `silver.dim_customer`: incompatible schema on column loyalty_tier (incoming LONG vs table STRING)\n\nAirflow task log tail:\n  File \"/opt/airflow/dags/silver/merge_customer.py\", line 134, in merge_dim_customer\n    .merge(target, \"s.customer_id = t.customer_id\")\n  ...\n",
+  "dag_context": {
+    "dag_id": "silver_daily_dag",
+    "task_id": "merge_dim_customer",
+    "table": "silver.dim_customer",
+    "format": "delta"
+  }
+}

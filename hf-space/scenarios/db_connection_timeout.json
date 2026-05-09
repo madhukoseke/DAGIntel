@@ -1,0 +1,12 @@
+{
+  "id": "db_connection_timeout",
+  "title": "Postgres connection storm",
+  "anchoring_context": "Stg refresh · 09:05 UTC spike",
+  "raw_logs": "[2026-05-09T09:05:12.003+0000] {taskinstance.py:1189} INFO - Executing <Task(PythonOperator): refresh_stg_orders> on 2026-05-09 08:00:00+00:00\n[2026-05-09T09:05:12.881+0000] {logging_mixin.py:188} INFO - Connecting to analytics-primary.xxxxx.us-east-1.rds.amazonaws.com:5432/analytics\n[2026-05-09T09:05:42.902+0000] {taskinstance.py:3313} ERROR - Task failed with exception\nsqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at \"analytics-primary.xxxxx.us-east-1.rds.amazonaws.com\" (10.0.41.12), port 5432 failed: timeout expired\n\nThe above exception was the direct cause of the following exception:\nTraceback (most recent call last):\n  File \"/opt/airflow/dags/staging/refresh_stg_orders.py\", line 41, in refresh_stg_orders\n    with engine.connect() as conn:\n  ...\n\n[2026-05-09T09:05:43.110+0000] {taskinstance.py:2732} INFO - Marking task as UP_FOR_RETRY. dag_id=staging_hourly_dag, task_id=refresh_stg_orders, run_id=scheduled__2026-05-09T08:00:00+00:00, try_number=2, max_tries=3\n\nSide context: RDS Performance Insights shows max_connections pegged at 500/500 for preceding 20 minutes; many idle in transaction sessions from BI tool.\n",
+  "dag_context": {
+    "dag_id": "staging_hourly_dag",
+    "task_id": "refresh_stg_orders",
+    "database": "analytics",
+    "host": "analytics-primary.xxxxx.us-east-1.rds.amazonaws.com"
+  }
+}
