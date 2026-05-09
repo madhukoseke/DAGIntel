@@ -54,7 +54,7 @@ Execution path from user input through the crew to UI output (monospace; read le
     v           v           v           v
  +------+   +------+   +------+   +------------------+
  |Agent |   |Task 1|   |Task 2|   | Task 3           |
- | x 3  |   |parse |-->|diag  |-->| fix              |
+ | x 3  |   |parse |-->|diagnose|-->| fix            |
  +---+--+   +---+--+   +---+--+   +---+--------------+
      |          |          |          |
      +----------+----------+----------+
