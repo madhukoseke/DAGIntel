@@ -1,0 +1,12 @@
+{
+  "id": "pool_exhaustion",
+  "title": "Pool slot exhaustion",
+  "anchoring_context": "Batch layer starved: no free slots in default_pool",
+  "description": "Upstream sensor cleared but executor cannot schedule due to pool capacity",
+  "raw_logs": "[2026-05-09T08:00:01.000+0000] {scheduler_job_runner.py:123} INFO - Trying to schedule dbt_run_batch\n[2026-05-09T08:00:02.050+0000] {scheduler_job_runner.py:456} WARNING - TaskInstance dbt_run_batch in dag mart_daily_dag cannot be scheduled: not enough open slots in pool default_pool (0/16)\n[2026-05-09T08:00:05.200+0000] {taskinstance.py:2732} INFO - dag_id=mart_daily_dag, task_id=dbt_run_batch still queued: pool default_pool saturated by long-running spark_promote task\n",
+  "dag_context": {
+    "dag_id": "mart_daily_dag",
+    "task_id": "dbt_run_batch",
+    "pool": "default_pool"
+  }
+}

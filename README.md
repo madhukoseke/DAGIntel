@@ -77,7 +77,7 @@ Execution path from user input through the crew to UI output (monospace; read le
 
 ## Repository layout
 
-- **`src/dagintel/`** — Python package: `crew`, `agents`, `tasks`, `llm`, `scenarios`, `telemetry`, and `prompts/`.
+- **`src/dagintel/`** — Python package: `crew`, `agents`, `tasks`, `textutil`, `ui_helpers`, `llm`, `scenarios`, `telemetry`, and `prompts/`.
 - **`scenarios/`** — JSON fixtures for the sample scenario picker.
 - **`app.py`** — Gradio entrypoint (used by Hugging Face Spaces).
 - **`app/streamlit_app.py`** — Streamlit entrypoint.
@@ -85,6 +85,7 @@ Execution path from user input through the crew to UI output (monospace; read le
 - **`scripts/serve_qwen3.sh`** — Example command line to start a **vLLM** OpenAI-compatible server.
 - **`scripts/sync_hf_space.sh`** — Copies selected artifacts into a local clone of the Space repository (see Hugging Face Space).
 - **`.env.example`** — Documented environment variables for local configuration.
+- **`pyproject.toml`** — Ruff lint configuration (per-file ignores for `app.py` path bootstrap).
 
 ---
 
@@ -120,11 +121,61 @@ Copy **`.env.example`** to **`.env`** for local work. Important variables:
 
 - **`DAGINTEL_BACKEND`** — `hf_inference` (default), `vllm`, or `anthropic` (local only; ignored on Hugging Face Spaces).
 - **`HF_TOKEN`** / **`HUGGING_FACE_HUB_TOKEN`** — required for `hf_inference`.
-- **`HF_MODEL`** — Hugging Face Hub repository id for the text model (default in code: `Qwen/QwQ-32B-Preview`).
+- **`HF_MODEL`** — Hub model id for the text model (default: `Qwen/Qwen2.5-7B-Instruct`). Must be **enabled for Inference** on your plan; large or preview models often return `model_not_supported` on serverless — pick a smaller model from the model card or [HF Models](https://huggingface.co/models) with inference available.
 - **`VLLM_BASE_URL`**, **`VLLM_MODEL`** — when `DAGINTEL_BACKEND=vllm`.
 - **`ANTHROPIC_API_KEY`**, **`ANTHROPIC_MODEL`** — when `DAGINTEL_BACKEND=anthropic` (local only).
+- **`DAGINTEL_MAX_LOG_IN_PROMPT`** — max characters of raw log embedded in the parse task (default `120000`); longer logs keep head and tail with a marker.
+- **`DAGINTEL_MAX_CONTEXT_JSON_CHARS`** — max characters for serialized optional DAG context JSON in the parse task (default `8000`).
+- **`DAGINTEL_CREW_VERBOSE`** — `true` / `false` to force CrewAI verbose logging; default is quiet on Hugging Face Spaces and verbose elsewhere.
+- **`DAGINTEL_KICKOFF_TIMEOUT_SEC`** — optional wall-clock timeout for the whole crew `kickoff()` (thread pool; best-effort). Unset = no limit.
+- **`DAGINTEL_MAX_USER_LOG_CHARS`** — max characters Gradio/Streamlit accept from paste or file before calling `investigate` (default `500000`).
+- **`DAGINTEL_MAX_DISPLAY_CHARS`** — max characters shown in each result panel before head/tail truncation (default `80000`); use the **Download** report for the full text.
+- **`DAGINTEL_RATE_LIMIT_PER_HOUR`** — optional process-wide cap on investigation runs per hour (`0` or unset = disabled).
+- **`DAGINTEL_LLM_TEMPERATURE`** — float passed to CrewAI `LLM` (default `0.3`).
+- **`DAGINTEL_LLM_MAX_TOKENS`** — integer max tokens per completion (default `2048`).
+- **`DAGINTEL_ENABLE_LOG_TOOLS`** — set to `1`/`true` to give the **log analyzer** agent an offline **`extract_airflow_log_signals`** regex tool (`0`/unset = disabled, default latency-friendly on Spaces).
+- **`DAGINTEL_LOG_ANALYZER_MAX_ITER`** — when log tools are on, CrewAI **`max_iter`** for that agent (default `6`).
+- **`DAGINTEL_LOG_TOOL_MAX_INPUT`** / **`DAGINTEL_LOG_TOOL_LIST_CAP`** — cap tool input bytes and extracted list sizes (defaults `200000` and `12`).
 
-See **`src/dagintel/llm.py`** for authoritative behavior, including Space detection and backend forcing.
+See **`src/dagintel/llm.py`** for authoritative behavior, including Space detection and backend forcing (`dagintel_backend()` is testable with an explicit env mapping).
+
+### Makefile shortcuts
+
+From the repo root (after `make install-dev`):
+
+- **`make test`** — `pytest`
+- **`make lint`** — `ruff check`
+- **`make run-gradio`** / **`make run-streamlit`** — local UIs
+- **`make sync-space`** — copy into `hf-space/DAGIntel-airflow-investigator/` (requires that clone; see Hugging Face Space section)
+- **`make sync-space-dry`** / **`./scripts/sync_hf_space.sh --dry-run`** — rsync plan only, no writes
+
+### Parse task JSON contract
+
+The first crew task asks the log analyzer for **one JSON object** (no markdown fences) with:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_id` | string or null | Airflow task id if found |
+| `dag_id` | string or null | DAG id if found |
+| `run_id` | string or null | Run id if found |
+| `try_number` | number or null | Try number if found |
+| `error_class` | string | Short label (e.g. `KubernetesOOM`, `SensorTimeout`) |
+| `error_category` | string | `operator`, `infrastructure`, `dependency`, `data`, `configuration`, or `unknown` |
+| `summary` | string | Short human summary |
+| `evidence_lines` | string[] | Short supporting excerpts from the log |
+| `confidence` | string | `high`, `medium`, or `low` |
+
+Optional **DAG context** from the UI is included in the parse task prompt; ids there are treated as authoritative when the log does not contradict them.
+
+### Editable install (optional)
+
+For tooling that expects a package root:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Runtime dependencies still come from **`requirements.txt`**; the `[project]` section in **`pyproject.toml`** documents **`dagintel`** metadata and optional **`dev`** extras.
 
 ---
 
@@ -180,8 +231,8 @@ The sync script expects the Space repository to exist at **`hf-space/DAGIntel-ai
 ## Limitations
 
 - Bundled **scenarios** are short **illustrations**; they do not replace production log corpora.
-- **Task prompts** are minimal; production use would extend `tasks.py` and prompt files under `src/dagintel/prompts/`.
-- **No authentication** or rate limiting in the demo UI.
+- **Model compliance** with the JSON contract is best-effort; validate parse output before automation.
+- **No authentication** in the demo UI; optional in-memory **rate limit** when `DAGINTEL_RATE_LIMIT_PER_HOUR` is set.
 - **No guarantee** of factual root cause: outputs are model-generated and must be reviewed by humans before operational action.
 
 ---

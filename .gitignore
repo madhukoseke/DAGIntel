@@ -1,10 +1,16 @@
 .env
 .env.local
+.env_bkp
+.env.*.bak
+*.swp
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
 venv/
+.tmp_ci_venv/
+.pytest_cache/
+.ruff_cache/
 .streamlit/secrets.toml
 *.log
 .DS_Store
@@ -16,6 +22,7 @@ dist/
 
 # Hugging Face Space working clone (separate git remote); sync with scripts/sync_hf_space.sh
 hf-space/DAGIntel-airflow-investigator/
+hf-space/DAGIntel-airflow-investigator-bkp/
 
 # Local backup copies — not for GitHub
 hf-space-bkp/

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import socket
+from collections.abc import Mapping
 from functools import lru_cache
 
 from crewai import LLM
@@ -17,41 +18,86 @@ _BACKEND_ALIASES = {
 }
 
 
-def _on_huggingface_space() -> bool:
-    """True when running inside a Hugging Face Space (public or private).
+def _env_str(env: Mapping[str, str], key: str) -> str:
+    v = env.get(key)
+    if v is None:
+        return ""
+    return str(v).strip()
 
-    On Spaces we always use Hugging Face Inference API + HF_TOKEN so visitors cannot
-    trigger paid Anthropic (or arbitrary vLLM) usage via repo secrets / env mistakes.
-    """
-    if os.getenv("DAGINTEL_FORCE_LOCAL_BACKEND") == "1":
+
+def on_huggingface_space_from(env: Mapping[str, str], hostname: str) -> bool:
+    """Space detection from explicit env + hostname (test-friendly)."""
+    if _env_str(env, "DAGINTEL_FORCE_LOCAL_BACKEND") == "1":
         return False
-    if os.getenv("SPACE_HOST", "").strip():
+    if _env_str(env, "SPACE_HOST"):
         return True
-    if os.getenv("SPACE_ID", "").strip():
+    if _env_str(env, "SPACE_ID"):
         return True
-    if (os.getenv("SYSTEM") or "").lower() == "spaces":
+    if _env_str(env, "SYSTEM").lower() == "spaces":
         return True
-    host = socket.gethostname().lower()
+    host = (hostname or "").lower()
     if "hf-space" in host or host.startswith("spaces-"):
         return True
     return False
 
 
-def _backend_name() -> str:
-    # Hosted Space: HF Inference only (Qwen / HF_MODEL); never anthropic or vLLM here.
-    if _on_huggingface_space():
+def on_huggingface_space() -> bool:
+    """True when running inside a Hugging Face Space (public or private).
+
+    On Spaces we always use Hugging Face Inference API + HF_TOKEN so visitors cannot
+    trigger paid Anthropic (or arbitrary vLLM) usage via repo secrets / env mistakes.
+    """
+    return on_huggingface_space_from(os.environ, socket.gethostname())
+
+
+def dagintel_backend(
+    environ: Mapping[str, str] | None = None,
+    *,
+    hostname: str | None = None,
+) -> str:
+    """
+    Resolve which LLM backend DAGIntel uses.
+
+    When ``environ`` is ``None``, reads ``os.environ`` and the real hostname.
+    Pass a dict (and optional ``hostname``) in unit tests.
+    """
+    env = os.environ if environ is None else environ
+    hn = socket.gethostname() if hostname is None else hostname
+    if on_huggingface_space_from(env, hn):
         return "hf_inference"
 
-    v = os.getenv("DAGINTEL_BACKEND")
-    raw = v.split("#")[0].strip().lower() if v else None
+    raw = _env_str(env, "DAGINTEL_BACKEND")
     if not raw:
         raw = "hf_inference"
+    raw = raw.split("#", 1)[0].strip().lower()
     return _BACKEND_ALIASES.get(raw, raw)
+
+
+def _backend_name() -> str:
+    return dagintel_backend()
+
+
+def llm_temperature() -> float:
+    raw = os.environ.get("DAGINTEL_LLM_TEMPERATURE", "0.3").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.3
+
+
+def llm_max_tokens() -> int:
+    raw = os.environ.get("DAGINTEL_LLM_MAX_TOKENS", "2048").strip()
+    try:
+        return max(1, int(float(raw)))
+    except ValueError:
+        return 2048
 
 
 @lru_cache(maxsize=1)
 def get_llm() -> LLM:
-    backend = _backend_name()
+    backend = dagintel_backend()
+    temperature = llm_temperature()
+    max_tokens = llm_max_tokens()
 
     if backend == "hf_inference":
         api_key = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
@@ -61,12 +107,14 @@ def get_llm() -> LLM:
                 "add HF_TOKEN (read token with Inference API access). "
                 "Locally: put HF_TOKEN in .env."
             )
-        model_id = os.getenv("HF_MODEL", "Qwen/QwQ-32B-Preview").strip()
+        # Use a model your HF account can run on Serverless Inference (see HF_MODEL in .env).
+        # QwQ-32B-Preview and other large models are often unavailable on the default router.
+        model_id = os.getenv("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct").strip()
         return LLM(
             model=f"huggingface/{model_id}",
             api_key=api_key,
-            temperature=0.3,
-            max_tokens=2048,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     if backend == "vllm":
@@ -78,8 +126,8 @@ def get_llm() -> LLM:
             model=f"openai/{model}",
             base_url=base,
             api_key=os.getenv("VLLM_API_KEY", "not-needed"),
-            temperature=0.3,
-            max_tokens=2048,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     if backend == "anthropic":
@@ -92,11 +140,15 @@ def get_llm() -> LLM:
         return LLM(
             model=model,
             api_key=api_key,
-            temperature=0.3,
-            max_tokens=2048,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     raise ValueError(
         f"Unknown DAGINTEL_BACKEND {backend!r}. "
         f"Use hf_inference (default), vllm, or anthropic (local only)."
     )
+
+
+# Backward-compatible name for callers that still import the private symbol.
+_on_huggingface_space = on_huggingface_space
